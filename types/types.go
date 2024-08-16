@@ -32,6 +32,7 @@ type Piece struct {
 
 type Segment struct {
 	ID       SegmentID `json:"id"`
+	Size     uint64    `json:"size"`
 	Position uint      `json:"position"`
 	Pieces   []Piece   `json:"pieces"`
 }
