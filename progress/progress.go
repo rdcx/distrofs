@@ -1,3 +1,4 @@
 package progress
 
-type Callback func(progress float64, speed int) error
+type BytesRead func(read uint64) error
+type BytesReadWithTotal func(read, total uint64) error

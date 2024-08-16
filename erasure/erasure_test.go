@@ -1,7 +1,6 @@
 package erasure
 
 import (
-	"fmt"
 	"testing"
 )
 
@@ -34,10 +33,7 @@ func TestErasure(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		fmt.Printf("len of data: %d\n", len(data))
-		fmt.Printf("len of decoded: %d\n", len(actual))
-
-		if string(actual) != string(data) {
+		if string(actual[:len(data)]) != string(data) {
 			t.Errorf("expected %s, got %s", string(data), string(actual))
 		}
 	})

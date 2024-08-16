@@ -16,12 +16,18 @@ func NewSegmentID() SegmentID {
 
 type PieceID uuid.UUID
 
+func (p PieceID) String() string {
+	return uuid.UUID(p).String()
+}
+
 func NewPieceID() PieceID {
 	return PieceID(uuid.New())
 }
 
 type Piece struct {
-	ID PieceID `json:"id"`
+	ID       PieceID `json:"id"`
+	Position uint    `json:"position"`
+	Addr     string  `json:"addr"`
 }
 
 type Segment struct {
@@ -33,6 +39,7 @@ type Segment struct {
 type Object struct {
 	ID   ObjectID `json:"id"`
 	Name string   `json:"name"`
+	Size uint64   `json:"size"`
 
 	Segments []Segment `json:"segments"`
 }

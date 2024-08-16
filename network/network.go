@@ -2,9 +2,11 @@ package network
 
 import (
 	"dfs/client/api"
+	"dfs/erasure"
 	"dfs/progress"
 	"dfs/types"
 	"io"
+	"net/http"
 )
 
 type Node struct {
@@ -21,41 +23,70 @@ func NewNodeNetwork(api *api.Client) *NodeNetwork {
 	}
 }
 
-func (nn *NodeNetwork) ReadObject(obj *types.Object, w io.WriteCloser, pc progress.Callback) error {
-	var total uint64
-	for _, segment := range obj.Segments {
-		total += uint64(len(segment.Pieces))
+func (nn *NodeNetwork) ReadObject(obj *types.Object, w io.WriteCloser, progress progress.BytesReadWithTotal) error {
+	var totalBytesRead uint64 = 0
+	var segmentProgress = func(bytesRead uint64) error {
+		totalBytesRead += bytesRead
+		progress(totalBytesRead, obj.Size)
+		return nil
 	}
 
 	for _, segment := range obj.Segments {
 
-		var buf []byte
-		nn.ReadPiece(segment.Pieces, buf, pc)
-	}
+		err := nn.ReadSegment(segment, w, segmentProgress)
 
-	// get each segment from the network
-	// and write it to the writer, all of the orders must be preserved
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
 
-func (nn *NodeNetwork) ReconstructSegment(pieces []types.Piece) []byte {
-	// reconstruct the segment from the first 29 pieces
+func (nn *NodeNetwork) ReadSegment(segment types.Segment, w io.WriteCloser, pc progress.BytesRead) error {
+
+	var segData [][]byte = make([][]byte, 80)
+
+	for _, piece := range segment.Pieces {
+		data, err := nn.ReadPiece(piece)
+		if err != nil {
+			return err
+		}
+
+		segData[piece.Position] = data
+	}
+
+	enc := erasure.NewReedSolomonEncoder(29, 51)
+
+	data, err := enc.Reconstruct(segData)
+
+	if err != nil {
+		return err
+	}
+
+	_, err = w.Write(data)
+
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func (nn *NodeNetwork) WriteData(obj *types.Object, r io.ReadCloser, pc progress.Callback) error {
-	var total uint64
-	for _, segment := range obj.Segments {
-		total += uint64(len(segment.Pieces))
+func (nn *NodeNetwork) ReadPiece(piece types.Piece) ([]byte, error) {
+	res, err := http.Get(piece.Addr + "/piece/" + piece.ID.String())
+
+	if err != nil {
+		return nil, err
 	}
 
-	var completed uint64 = total
-	var progress = float64(completed) / float64(total)
-	pc(progress, 0)
+	defer res.Body.Close()
 
-	// split the data into pieces
-	// and send each piece to the network
+	data, err := io.ReadAll(res.Body)
 
-	return nil
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
 }

@@ -21,25 +21,25 @@ func NewFS(baseURL, apiKey string) *FS {
 	}
 }
 
-func (fs *FS) ReadFile(name string, w io.WriteCloser, pc progress.Callback) (*types.Object, error) {
+func (fs *FS) ReadFile(name string, w io.WriteCloser, progress progress.BytesReadWithTotal) (*types.Object, error) {
 	obj, err := fs.apiClient.GetObject(name)
 	if err != nil {
 		return nil, err
 	}
 
-	fs.network.ReadObject(obj, w, pc)
+	fs.network.ReadObject(obj, w, progress)
 
 	return obj, nil
 }
 
-func (fs *FS) WriteFile(name string, r io.ReadCloser, pc progress.Callback) (*types.Object, error) {
-	obj := types.NewObject(name)
-	err := fs.apiClient.PutObject(&obj)
-	if err != nil {
-		return nil, err
-	}
+// func (fs *FS) WriteFile(name string, r io.ReadCloser, pc progress.Callback) (*types.Object, error) {
+// 	obj := types.NewObject(name)
+// 	err := fs.apiClient.PutObject(&obj)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	fs.network.WriteData(obj, r, pc)
+// 	fs.network.WriteData(obj, r, pc)
 
-	return obj, nil
-}
+// 	return obj, nil
+// }
