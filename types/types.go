@@ -4,11 +4,19 @@ import "github.com/google/uuid"
 
 type ObjectID uuid.UUID
 
+func (o ObjectID) String() string {
+	return uuid.UUID(o).String()
+}
+
 func NewObjectID() ObjectID {
 	return ObjectID(uuid.New())
 }
 
 type SegmentID uuid.UUID
+
+func (s SegmentID) String() string {
+	return uuid.UUID(s).String()
+}
 
 func NewSegmentID() SegmentID {
 	return SegmentID(uuid.New())
@@ -33,9 +41,10 @@ type Piece struct {
 
 type Segment struct {
 	ID       SegmentID `json:"id"`
+	ObjectID ObjectID  `json:"object_id"`
 	Size     uint64    `json:"size"`
 	Position uint      `json:"position"`
-	Pieces   []Piece   `json:"pieces"`
+	Pieces   []*Piece  `json:"pieces"`
 }
 
 type Object struct {
@@ -43,12 +52,21 @@ type Object struct {
 	Name string   `json:"name"`
 	Size uint64   `json:"size"`
 
-	Segments []Segment `json:"segments"`
+	Segments []*Segment `json:"segments"`
 }
 
 func NewObject(name string) Object {
 	return Object{
 		ID:   ObjectID(uuid.New()),
 		Name: name,
+	}
+}
+
+func NewSegment(objectID ObjectID, size uint64, position uint) Segment {
+	return Segment{
+		ID:       NewSegmentID(),
+		ObjectID: objectID,
+		Size:     size,
+		Position: position,
 	}
 }

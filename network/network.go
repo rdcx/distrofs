@@ -34,9 +34,95 @@ func WithNodes(nodes map[string]*Node) func(*NodeNetwork) {
 }
 
 func NewNodeNetwork(opts ...func(*NodeNetwork)) *NodeNetwork {
-	return &NodeNetwork{
+	nn := &NodeNetwork{
 		nodes: make(map[string]*Node),
 	}
+
+	for _, opt := range opts {
+		opt(nn)
+	}
+
+	return nn
+}
+
+func (nn *NodeNetwork) WriteObject(obj *types.Object, r io.Reader, progress progress.BytesReadWithTotal) error {
+	var totalBytesRead uint64 = 0
+	var segmentProgress = func(bytesRead uint64) error {
+		totalBytesRead += bytesRead
+		progress(totalBytesRead, obj.Size)
+		return nil
+	}
+
+	for _, segment := range obj.Segments {
+		err := nn.WriteSegment(segment, r, segmentProgress)
+
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (nn *NodeNetwork) WriteSegment(segment *types.Segment, r io.Reader, pc progress.BytesRead) error {
+	data, err := io.ReadAll(io.LimitReader(r, int64(segment.Size)))
+
+	if err != nil {
+		return err
+	}
+
+	enc := erasure.NewReedSolomonEncoder(29, 51)
+
+	shards, err := enc.Encode(data)
+
+	if err != nil {
+		return err
+	}
+
+	for i, shard := range shards {
+		piece := &types.Piece{
+			ID:       types.NewPieceID(),
+			Hash:     hashutil.Blake3(shard),
+			Position: uint(i),
+			Addr:     "http://localhost:8080",
+		}
+
+		segment.Pieces = append(segment.Pieces, piece)
+	}
+
+	for i, shard := range shards {
+		err = nn.WritePiece(segment.Pieces[i], shard)
+
+		if err != nil {
+			return err
+		}
+	}
+
+	err = nn.api.CreateSegment(segment)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (nn *NodeNetwork) WritePiece(piece *types.Piece, data []byte) error {
+	req, err := http.NewRequest("POST", piece.Addr+"/pieces/"+piece.ID.String(), bytes.NewBuffer(data))
+
+	if err != nil {
+		return err
+	}
+
+	res, err := http.DefaultClient.Do(req)
+
+	if err != nil {
+		return err
+	}
+
+	defer res.Body.Close()
+
+	return nil
 }
 
 func (nn *NodeNetwork) ReadObject(obj *types.Object, w io.Writer, progress progress.BytesReadWithTotal) error {
@@ -59,7 +145,7 @@ func (nn *NodeNetwork) ReadObject(obj *types.Object, w io.Writer, progress progr
 	return nil
 }
 
-func (nn *NodeNetwork) ReadSegment(segment types.Segment, w io.Writer, pc progress.BytesRead) error {
+func (nn *NodeNetwork) ReadSegment(segment *types.Segment, w io.Writer, pc progress.BytesRead) error {
 
 	var segData [][]byte = make([][]byte, 80)
 
@@ -99,8 +185,8 @@ func (nn *NodeNetwork) ReadSegment(segment types.Segment, w io.Writer, pc progre
 	return nil
 }
 
-func (nn *NodeNetwork) ReadPiece(piece types.Piece) ([]byte, error) {
-	res, err := http.Get(piece.Addr + "/piece/" + piece.ID.String())
+func (nn *NodeNetwork) ReadPiece(piece *types.Piece) ([]byte, error) {
+	res, err := http.Get(piece.Addr + "/pieces/" + piece.ID.String())
 
 	if err != nil {
 		return nil, err

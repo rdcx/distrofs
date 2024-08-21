@@ -121,3 +121,45 @@ func TestPutObject(t *testing.T) {
 		}
 	})
 }
+
+func TestCreateSegment(t *testing.T) {
+	t.Run("can create segment", func(t *testing.T) {
+		defer gock.Off()
+
+		objID := types.NewObjectID()
+
+		mockSeg := types.NewSegment(objID, types.ONE_MEGABYTE, 0)
+
+		gock.New("http://localhost:8080").
+			JSON(mockSeg).
+			Post("/objects/" + objID.String() + "/segments").
+			Reply(200).
+			JSON(`{"success":"ok"}`)
+
+		api := api.NewClient("http://localhost:8080", "123")
+
+		err := api.CreateSegment(&mockSeg)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("can handle error", func(t *testing.T) {
+		defer gock.Off()
+
+		mockSeg := types.NewSegment(types.NewObjectID(), types.ONE_MEGABYTE, 0)
+
+		gock.New("http://localhost:8080").
+			JSON(mockSeg).
+			Post("/segment/create").
+			Reply(500).
+			JSON(`{"error":"internal server error"}`)
+
+		api := api.NewClient("http://localhost:8080", "123")
+
+		err := api.CreateSegment(&mockSeg)
+		if err == nil {
+			t.Fatalf("expected error, got nil")
+		}
+	})
+}

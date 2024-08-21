@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"dfs/types"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 )
@@ -75,6 +76,36 @@ func (c *Client) PutObject(obj *types.Object) error {
 	}
 
 	req, err := newRequest("POST", c.baseURL+"/object/put", bytes.NewBuffer(encoded), c.key)
+	if err != nil {
+		return err
+	}
+
+	client := &http.Client{}
+
+	resp, err := client.Do(req)
+
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return types.ErrCouldNotPutObjectToAPI
+	}
+
+	return nil
+}
+
+func (c *Client) CreateSegment(segment *types.Segment) error {
+	encoded, err := json.Marshal(segment)
+	if err != nil {
+		return err
+	}
+
+	endpoint := fmt.Sprintf("/objects/%s/segments", segment.ObjectID.String())
+
+	req, err := newRequest("POST", c.baseURL+endpoint, bytes.NewBuffer(encoded), c.key)
 	if err != nil {
 		return err
 	}
