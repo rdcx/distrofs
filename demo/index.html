@@ -1,0 +1,89 @@
+<html>
+
+<head>
+    <title>My First Web Page</title>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+
+            function loadResource(element, attribute, handleContent) {
+                var src = element.getAttribute(attribute);
+                var expectedChecksum = element.getAttribute('checksum'); // Get the expected checksum
+                var parts = src.split(':');
+                var reqBase = 'http://localhost:8080/';
+                var reqObj = parts[1];
+
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', reqBase + reqObj, true);
+                xhr.responseType = 'blob'; // Set the response type to blob
+
+                xhr.onreadystatechange = function () {
+                    if (xhr.readyState == 4 && xhr.status == 200) {
+                        var reader = new FileReader();
+                        reader.onloadend = function () {
+                            var binaryData = reader.result;
+                            // Calculate SHA-1 checksum
+                            crypto.subtle.digest('SHA-1', binaryData).then(function (hashBuffer) {
+                                var hashArray = Array.from(new Uint8Array(hashBuffer));
+                                var hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+                                if (hashHex === expectedChecksum) {
+                                    handleContent(element, xhr.response);
+                                } else {
+                                    console.error('Checksum mismatch! Expected: ' + expectedChecksum + ', Got: ' + hashHex);
+                                }
+                            }).catch(function (error) {
+                                console.error('Failed to calculate checksum: ', error);
+                            });
+                        };
+                        reader.readAsArrayBuffer(xhr.response); // Convert blob to array buffer for hashing
+                    }
+                };
+                xhr.send();
+            }
+
+            function handleImageContent(img, response) {
+                var base64Reader = new FileReader();
+                base64Reader.onloadend = function () {
+                    img.src = base64Reader.result;
+                };
+                base64Reader.readAsDataURL(response);
+            }
+
+            function handleScriptContent(script, response) {
+                var reader = new FileReader();
+                reader.onloadend = function () {
+                    var scriptContent = reader.result;
+                    var scriptElement = document.createElement('script');
+                    scriptElement.text = scriptContent;
+                    document.head.appendChild(scriptElement);
+                };
+                reader.readAsText(response);
+            }
+
+            // Handle img tags
+            document.querySelectorAll('img[dfs-src]').forEach(function (img) {
+                loadResource(img, 'dfs-src', handleImageContent);
+            });
+
+            // Handle script tags
+            document.querySelectorAll('script[dfs-src]').forEach(function (script) {
+                loadResource(script, 'dfs-src', handleScriptContent);
+            });
+
+        }); 
+    </script>
+
+    <script dfs-src="blogger:app1/script.js" checksum="2978e693731b7890655b0592dfefd724b03d0eae"></script>
+</head>
+
+<body>
+    <img dfs-src="blogger:app1/example.jpg" checksum="a4f491a2a382eb3ae093cc4ec51b6e1ca120b736"
+        style="width:304px;height:228px;">
+    <img dfs-src="blogger:app1/example.jpg" checksum="a4f491a2a382eb3ae093cc4ec51b6e1ca120b736"
+        style="width:304px;height:228px;">
+    <img dfs-src="blogger:app1/example.jpg" checksum="a4f491a2a382eb3ae093cc4ec51b6e1ca120b736"
+        style="width:304px;height:228px;">
+</body>
+
+</html>

@@ -3,10 +3,9 @@ package network_test
 import (
 	"bytes"
 	"dfs/erasure"
+	"dfs/hashutil"
 	"dfs/network"
 	"dfs/types"
-	"fmt"
-	"os"
 	"testing"
 
 	"github.com/h2non/gock"
@@ -24,9 +23,51 @@ func TestReadObject(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		fmt.Printf("len of shard[0]: %d\n", len(shards[0]))
+		obj := types.NewObject("test")
 
-		os.Exit(0)
+		segment := types.Segment{
+			ID:       types.NewSegmentID(),
+			Size:     uint64(len(dummyData)),
+			Position: 0,
+		}
+
+		for i := 0; i < 80; i++ {
+			piece := types.Piece{
+				ID:       types.NewPieceID(),
+				Hash:     hashutil.Blake3(shards[i]),
+				Position: uint(i),
+				Addr:     "http://localhost:8080",
+			}
+
+			segment.Pieces = append(segment.Pieces, piece)
+		}
+
+		obj.Segments = append(obj.Segments, segment)
+
+		defer gock.Off()
+
+		for i, shard := range shards {
+			gock.New("http://localhost:8080").
+				Get("/piece/" + segment.Pieces[i].ID.String()).
+				Reply(200).
+				Body(bytes.NewBuffer(shard))
+		}
+
+		nn := network.NewNodeNetwork()
+
+		var buf bytes.Buffer
+
+		err = nn.ReadObject(&obj, &buf, nil)
+
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		result := buf.Bytes()
+
+		if !bytes.Equal(result, dummyData) {
+			t.Fatalf("expected data to be equal")
+		}
 	})
 }
 
@@ -52,6 +93,7 @@ func TestReadSegment(t *testing.T) {
 		for i := 0; i < 80; i++ {
 			piece := types.Piece{
 				ID:       types.NewPieceID(),
+				Hash:     hashutil.Blake3(shards[i]),
 				Position: uint(i),
 				Addr:     "http://localhost:8080",
 			}

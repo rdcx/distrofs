@@ -26,6 +26,7 @@ func NewPieceID() PieceID {
 
 type Piece struct {
 	ID       PieceID `json:"id"`
+	Hash     []byte  `json:"hash"`
 	Position uint    `json:"position"`
 	Addr     string  `json:"addr"`
 }

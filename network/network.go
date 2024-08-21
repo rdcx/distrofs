@@ -1,8 +1,10 @@
 package network
 
 import (
+	"bytes"
 	"dfs/client/api"
 	"dfs/erasure"
+	"dfs/hashutil"
 	"dfs/progress"
 	"dfs/types"
 	"io"
@@ -37,7 +39,7 @@ func NewNodeNetwork(opts ...func(*NodeNetwork)) *NodeNetwork {
 	}
 }
 
-func (nn *NodeNetwork) ReadObject(obj *types.Object, w io.WriteCloser, progress progress.BytesReadWithTotal) error {
+func (nn *NodeNetwork) ReadObject(obj *types.Object, w io.Writer, progress progress.BytesReadWithTotal) error {
 	var totalBytesRead uint64 = 0
 	var segmentProgress = func(bytesRead uint64) error {
 		totalBytesRead += bytesRead
@@ -61,13 +63,23 @@ func (nn *NodeNetwork) ReadSegment(segment types.Segment, w io.Writer, pc progre
 
 	var segData [][]byte = make([][]byte, 80)
 
+	var successPiecesCount uint = 0
 	for _, piece := range segment.Pieces {
+		if successPiecesCount == 29 {
+			break
+		}
 		data, err := nn.ReadPiece(piece)
 		if err != nil {
-			return err
+			segData[piece.Position] = nil
+			continue
 		}
 
 		segData[piece.Position] = data
+		successPiecesCount++
+	}
+
+	if successPiecesCount < 29 {
+		return types.ErrNotEnoughPieces
 	}
 
 	enc := erasure.NewReedSolomonEncoder(29, 51)
@@ -100,6 +112,10 @@ func (nn *NodeNetwork) ReadPiece(piece types.Piece) ([]byte, error) {
 
 	if err != nil {
 		return nil, err
+	}
+
+	if hash := hashutil.Blake3(data); !bytes.Equal(hash, piece.Hash) {
+		return nil, types.ErrPieceHashMismatch
 	}
 
 	return data, nil

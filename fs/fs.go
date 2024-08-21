@@ -3,7 +3,6 @@ package fs
 import (
 	"dfs/client/api"
 	"dfs/network"
-	"dfs/progress"
 	"dfs/types"
 	"io"
 )
@@ -17,17 +16,17 @@ func NewFS(baseURL, apiKey string) *FS {
 	apiClient := api.NewClient(baseURL, apiKey)
 	return &FS{
 		apiClient: apiClient,
-		network:   network.NewNodeNetwork(apiClient),
+		network:   network.NewNodeNetwork(network.WithApiClient(apiClient)),
 	}
 }
 
-func (fs *FS) ReadFile(name string, w io.WriteCloser, progress progress.BytesReadWithTotal) (*types.Object, error) {
+func (fs *FS) ReadFile(name string, w io.WriteCloser) (*types.Object, error) {
 	obj, err := fs.apiClient.GetObject(name)
 	if err != nil {
 		return nil, err
 	}
 
-	fs.network.ReadObject(obj, w, progress)
+	fs.network.ReadObject(obj, w)
 
 	return obj, nil
 }
