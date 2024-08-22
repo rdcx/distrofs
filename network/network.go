@@ -8,34 +8,61 @@ import (
 	"dfs/progress"
 	"dfs/types"
 	"io"
+	"math/rand"
 	"net/http"
 )
 
-type Node struct {
-	HttpAddr string
-	GRPCAddr string
-}
-
-type NodeNetwork struct {
+type Network struct {
 	api   *api.Client
-	nodes map[string]*Node
+	nodes []*types.Node
 }
 
-func WithApiClient(api *api.Client) func(*NodeNetwork) {
-	return func(nn *NodeNetwork) {
+func (nn *Network) RandomNodesList(n int) ([]*types.Node, error) {
+
+	if len(nn.nodes) < n {
+		return nil, types.ErrNotEnoughNodesAvailable
+	}
+	newList := make([]*types.Node, len(nn.nodes))
+
+	rand.Shuffle(len(nn.nodes), func(i, j int) {
+		newList[j], newList[i] = nn.nodes[i], nn.nodes[j]
+	})
+
+	return newList[:n], nil
+}
+
+func (n *Network) GetNode(nodeID types.NodeID) (*types.Node, error) {
+	var found *types.Node
+
+	for _, node := range n.nodes {
+		if node.ID == nodeID {
+			found = node
+			break
+		}
+	}
+
+	if found == nil {
+		return nil, types.ErrNodeNotFound
+	}
+
+	return found, nil
+}
+
+func WithApiClient(api *api.Client) func(*Network) {
+	return func(nn *Network) {
 		nn.api = api
 	}
 }
 
-func WithNodes(nodes map[string]*Node) func(*NodeNetwork) {
-	return func(nn *NodeNetwork) {
+func WithNodes(nodes []*types.Node) func(*Network) {
+	return func(nn *Network) {
 		nn.nodes = nodes
 	}
 }
 
-func NewNodeNetwork(opts ...func(*NodeNetwork)) *NodeNetwork {
-	nn := &NodeNetwork{
-		nodes: make(map[string]*Node),
+func NewNetwork(opts ...func(*Network)) *Network {
+	nn := &Network{
+		nodes: make([]*types.Node, 0),
 	}
 
 	for _, opt := range opts {
@@ -45,7 +72,7 @@ func NewNodeNetwork(opts ...func(*NodeNetwork)) *NodeNetwork {
 	return nn
 }
 
-func (nn *NodeNetwork) WriteObject(obj *types.Object, r io.Reader, progress progress.BytesReadWithTotal) error {
+func (nn *Network) WriteObject(obj *types.Object, r io.Reader, progress progress.BytesReadWithTotal) error {
 	var totalBytesRead uint64 = 0
 	var segmentProgress = func(bytesRead uint64) error {
 		totalBytesRead += bytesRead
@@ -64,7 +91,15 @@ func (nn *NodeNetwork) WriteObject(obj *types.Object, r io.Reader, progress prog
 	return nil
 }
 
-func (nn *NodeNetwork) WriteSegment(segment *types.Segment, r io.Reader, pc progress.BytesRead) error {
+func (nn *Network) WriteSegment(segment *types.Segment, r io.Reader, pc progress.BytesRead) error {
+
+	// check there are enough nodes available
+	randomNodes, err := nn.RandomNodesList(80)
+
+	if err != nil {
+		return err
+	}
+
 	data, err := io.ReadAll(io.LimitReader(r, int64(segment.Size)))
 
 	if err != nil {
@@ -84,7 +119,7 @@ func (nn *NodeNetwork) WriteSegment(segment *types.Segment, r io.Reader, pc prog
 			ID:       types.NewPieceID(),
 			Hash:     hashutil.Blake3(shard),
 			Position: uint(i),
-			Addr:     "http://localhost:8080",
+			NodeID:   randomNodes[i].ID,
 		}
 
 		segment.Pieces = append(segment.Pieces, piece)
@@ -107,8 +142,14 @@ func (nn *NodeNetwork) WriteSegment(segment *types.Segment, r io.Reader, pc prog
 	return nil
 }
 
-func (nn *NodeNetwork) WritePiece(piece *types.Piece, data []byte) error {
-	req, err := http.NewRequest("POST", piece.Addr+"/pieces/"+piece.ID.String(), bytes.NewBuffer(data))
+func (nn *Network) WritePiece(piece *types.Piece, data []byte) error {
+	node, err := nn.GetNode(piece.NodeID)
+
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", node.HttpAddr+"/pieces/"+piece.ID.String(), bytes.NewBuffer(data))
 
 	if err != nil {
 		return err
@@ -125,7 +166,7 @@ func (nn *NodeNetwork) WritePiece(piece *types.Piece, data []byte) error {
 	return nil
 }
 
-func (nn *NodeNetwork) ReadObject(obj *types.Object, w io.Writer, progress progress.BytesReadWithTotal) error {
+func (nn *Network) ReadObject(obj *types.Object, w io.Writer, progress progress.BytesReadWithTotal) error {
 	var totalBytesRead uint64 = 0
 	var segmentProgress = func(bytesRead uint64) error {
 		totalBytesRead += bytesRead
@@ -145,7 +186,7 @@ func (nn *NodeNetwork) ReadObject(obj *types.Object, w io.Writer, progress progr
 	return nil
 }
 
-func (nn *NodeNetwork) ReadSegment(segment *types.Segment, w io.Writer, pc progress.BytesRead) error {
+func (nn *Network) ReadSegment(segment *types.Segment, w io.Writer, pc progress.BytesRead) error {
 
 	var segData [][]byte = make([][]byte, 80)
 
@@ -185,8 +226,14 @@ func (nn *NodeNetwork) ReadSegment(segment *types.Segment, w io.Writer, pc progr
 	return nil
 }
 
-func (nn *NodeNetwork) ReadPiece(piece *types.Piece) ([]byte, error) {
-	res, err := http.Get(piece.Addr + "/pieces/" + piece.ID.String())
+func (nn *Network) ReadPiece(piece *types.Piece) ([]byte, error) {
+	node, err := nn.GetNode(piece.NodeID)
+
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := http.Get(node.HttpAddr + "/pieces/" + piece.ID.String())
 
 	if err != nil {
 		return nil, err

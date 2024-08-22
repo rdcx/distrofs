@@ -32,11 +32,27 @@ func NewPieceID() PieceID {
 	return PieceID(uuid.New())
 }
 
+type NodeID uuid.UUID
+
+func (n NodeID) String() string {
+	return uuid.UUID(n).String()
+}
+
+func NewNodeID() NodeID {
+	return NodeID(uuid.New())
+}
+
+type Node struct {
+	ID       NodeID `json:"id"`
+	HttpAddr string
+	GRPCAddr string
+}
+
 type Piece struct {
 	ID       PieceID `json:"id"`
 	Hash     []byte  `json:"hash"`
 	Position uint    `json:"position"`
-	Addr     string  `json:"addr"`
+	NodeID   NodeID  `json:"addr"`
 }
 
 type Segment struct {
